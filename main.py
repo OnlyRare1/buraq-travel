@@ -10,7 +10,7 @@ app = Flask(__name__)
 MIN_PRICE = 35000
 MAX_PRICE = 55000
 
-# List of Pakistani Airports to identify "Local" flights
+# List of Pakistani Airports
 PAK_AIRPORTS = [
     "KHI", "LHE", "ISB", "PEW", "MUX", "SKT", "LYP", 
     "GIL", "UET", "GWD", "TUK", "DGE", "BHV", "PJG", "RZS"
@@ -43,38 +43,34 @@ def create_synthetic_flights(origin, destination, date_str):
     results = []
     current_id = 1
     
-    # Airline Sequence: Airblue -> Fly Jinnah -> Air Sial
+    # Order: Airblue -> Fly Jinnah -> Air Sial
     airlines_sequence = [
         ("Airblue", "PA"),
         ("Fly Jinnah", "9P"),
         ("Air Sial", "PF")
     ]
     
-    # Base times for the 4 pages (to make them distinct)
-    # Page 1 (Morning), Page 2 (Noon), Page 3 (Afternoon), Page 4 (Evening)
-    page_start_hours = [6, 10, 14, 18]
+    # 4 Pages -> 4 Time Blocks
+    page_start_hours = [7, 11, 15, 19]
     
-    # LOOP 1: PAGES (4 Pages)
+    # --- LOOP START ---
     for page_idx, base_hour in enumerate(page_start_hours):
         
-        # LOOP 2: AIRLINES (3 Airlines per Page)
+        # For each page, we add 3 airlines (5 flights each)
         for name, code in airlines_sequence:
             
-            # Start time for this airline's block on this page
+            # Reset time for this airline block
             current_time = f"{base_hour:02d}:{random.randint(0, 30):02d}"
             
-            # LOOP 3: FLIGHTS (5 Flights per Airline)
+            # Generate 5 flights for this airline
             for i in range(5):
-                # 1. Increment time for the next flight in this block
-                gap = random.randint(45, 90) # Gap between flights
+                gap = random.randint(45, 80)
                 depart_time = add_time(current_time, gap)
-                current_time = depart_time # Update for next iteration
+                current_time = depart_time 
                 
-                # 2. Duration
                 duration_mins = random.randint(105, 130)
                 arrive_time = add_time(depart_time, duration_mins)
                 
-                # 3. Flight Number
                 flight_num = f"{code}-{random.randint(100, 999)}"
                 
                 results.append({
@@ -92,9 +88,9 @@ def create_synthetic_flights(origin, destination, date_str):
                     "is_scraper": True
                 })
                 current_id += 1
+                
+    # --- LOOP END ---
 
-    # CRITICAL: This return is OUTSIDE all loops. 
-    # It returns 60 flights total.
     return results
 
 @app.route('/')
