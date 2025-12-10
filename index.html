@@ -259,8 +259,10 @@
         });
 
         // --- CONFIG & API ---
-        const API_KEY = "JXEgEvgYfpnaGDPAqbCHA71tTrUgSsu3";
-        const API_SECRET = "WliWhvsqY9JVXvQX";
+        // UPDATED CREDENTIALS HERE
+        const API_KEY = "bZWMYt8XwHOHPGcpyI3NCPV7iQYHbvRA";
+        const API_SECRET = "7yOs1DciTD7qhpBn";
+        
         const BASE_URL = "https://api.amadeus.com";
         const AUTH_URL = `${BASE_URL}/v1/security/oauth2/token`;
         const SEARCH_URL_GET = `${BASE_URL}/v2/shopping/flight-offers`;
@@ -268,13 +270,13 @@
         const LOCATION_URL = `${BASE_URL}/v1/reference-data/locations`;
         const PROXY_URL = "https://corsproxy.io/?"; 
         
-        // --- FIXED: USE FULL ABSOLUTE URL ---
+        // --- FIXED: SCRAPER URL ---
         const LOCAL_SCRAPER_URL = "https://flight-scraper-flight-scraper.hf.space/api/search";
 
         // --- GLOBAL STATE FOR PAGINATION ---
         let allFlightsData = []; 
         let currentPage = 1;
-        const itemsPerPage = 15; // EXPLICIT 15 PER PAGE
+        const itemsPerPage = 15; 
         
         let cachedToken = null;
         let tokenExpiry = 0;
@@ -346,7 +348,10 @@
                     try {
                         const locations = await searchLocations(keyword);
                         renderSuggestions(locations, listElement, inputElement, hiddenInput);
-                    } catch (error) { console.error("Location search error", error); } 
+                    } catch (error) { 
+                        console.warn("Location search disabled (API error)");
+                        // Don't show error to user, just stop suggestions
+                    } 
                     finally { if(loadingElement) loadingElement.classList.add('hidden'); }
                 }, 400);
             });
@@ -361,13 +366,17 @@
         async function searchLocations(keyword) {
             const useProxy = document.getElementById('useProxy').checked;
             const token = await getAccessToken(useProxy);
+            if (!token) return []; // Skip if no token
+
             const urlObj = new URL(LOCATION_URL);
             urlObj.searchParams.append('subType', 'AIRPORT,CITY');
             urlObj.searchParams.append('keyword', keyword);
             urlObj.searchParams.append('view', 'LIGHT');
             const endpoint = useProxy ? PROXY_URL + encodeURIComponent(urlObj.toString()) : urlObj.toString();
-            const data = await fetchAndParse(endpoint, { method: 'GET', headers: { 'Authorization': `Bearer ${token}` } });
-            return data.data || [];
+            try {
+                const data = await fetchAndParse(endpoint, { method: 'GET', headers: { 'Authorization': `Bearer ${token}` } });
+                return data.data || [];
+            } catch (e) { return []; }
         }
 
         function renderSuggestions(locations, listElement, inputElement, hiddenInput) {
@@ -426,20 +435,30 @@
             setupAutocomplete(document.getElementById(`seg-dest-input-${segmentCount}`), `seg-dest-suggestions-${segmentCount}`, null, `seg-dest-${segmentCount}`);
         }
 
+        // --- SAFE TOKEN FETCHING ---
         async function getAccessToken(useProxy) {
             const now = Date.now() / 1000;
             if (cachedToken && tokenExpiry > now) return cachedToken;
+            
             const endpoint = useProxy ? PROXY_URL + encodeURIComponent(AUTH_URL) : AUTH_URL;
             const params = new URLSearchParams();
             params.append('grant_type', 'client_credentials');
             params.append('client_id', API_KEY);
             params.append('client_secret', API_SECRET);
+            
             try {
-                const data = await fetchAndParse(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params });
+                const data = await fetchAndParse(endpoint, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, 
+                    body: params 
+                });
                 cachedToken = data.access_token;
                 tokenExpiry = (Date.now() / 1000) + data.expires_in - 60;
                 return data.access_token;
-            } catch (err) { throw err; }
+            } catch (err) { 
+                console.warn("Amadeus API Token Fetch Failed - Proceeding with Local Only", err);
+                return null; // Return null to indicate failure, but don't crash
+            }
         }
 
         async function fetchAndParse(url, options) {
@@ -466,7 +485,7 @@
                 if(!response.ok) return [];
                 return await response.json();
             } catch (e) {
-                console.warn("Local scraper failed", e);
+                console.warn("Local scraper failed or unavailable", e);
                 return [];
             }
         }
@@ -483,15 +502,19 @@
                 let destination = document.getElementById('destination').value || document.getElementById('destination-input').value.toUpperCase().substring(0,3);
                 const date = document.getElementById('date').value;
 
-                // 1. Get Token
+                // 1. Get Token (Safely)
                 const token = await getAccessToken(useProxy);
                 
                 // 2. Prepare Promises (API + Scraper)
-                let apiPromise;
-                if (currentTripType === 'multicity') {
-                    apiPromise = searchMultiCity(token, useProxy);
-                } else {
-                    apiPromise = searchStandard(token, useProxy, origin, destination, date);
+                let apiPromise = Promise.reject("Skipped");
+                
+                // Only try API if we got a valid token
+                if (token) {
+                    if (currentTripType === 'multicity') {
+                        apiPromise = searchMultiCity(token, useProxy);
+                    } else {
+                        apiPromise = searchStandard(token, useProxy, origin, destination, date);
+                    }
                 }
                 
                 let scraperPromise = Promise.resolve([]);
@@ -499,7 +522,7 @@
                     scraperPromise = fetchScrapers(origin, destination, date);
                 }
 
-                // 3. Execute
+                // 3. Execute Both, don't fail if one dies
                 const [apiFlights, scraperFlights] = await Promise.allSettled([apiPromise, scraperPromise]);
 
                 // 4. Merge Results (Scraper FIRST, then API)
@@ -522,7 +545,7 @@
                     tempFlights = [...converted];
                 }
 
-                if(apiFlights.status === 'fulfilled' && apiFlights.value) {
+                if(apiFlights.status === 'fulfilled' && Array.isArray(apiFlights.value)) {
                     tempFlights = [...tempFlights, ...apiFlights.value];
                 }
 
