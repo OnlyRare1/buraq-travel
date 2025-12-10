@@ -9,7 +9,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y \
     wget gnupg unzip curl xvfb ffmpeg \
     --no-install-recommends && \
-    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg && \
+    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | \
+    gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg && \
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
     apt-get update && apt-get install -y google-chrome-stable && \
     rm -rf /var/lib/apt/lists/*
@@ -26,4 +27,5 @@ COPY --chown=user . $HOME/app
 RUN pip install --no-cache-dir --upgrade -r requirements.txt
 
 # 4. Start Xvfb (Fake Screen) then Python
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 & python test.py"]
+# FIXED: Changed test.py to main.py to match your filename
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 > /dev/null 2>&1 & python main.py"]
